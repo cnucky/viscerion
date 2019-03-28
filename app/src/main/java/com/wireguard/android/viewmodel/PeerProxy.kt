@@ -8,10 +8,11 @@ package com.wireguard.android.viewmodel
 import android.os.Parcel
 import android.os.Parcelable
 import androidx.databinding.BaseObservable
-import androidx.databinding.Bindable
 import androidx.databinding.Observable
+import androidx.databinding.ObservableBoolean
+import androidx.databinding.ObservableField
+import androidx.databinding.ObservableInt
 import androidx.databinding.ObservableList
-import com.wireguard.android.BR
 import com.wireguard.config.Attribute
 import com.wireguard.config.BadConfigException
 import com.wireguard.config.Peer
@@ -22,34 +23,48 @@ import java.util.LinkedHashSet
 class PeerProxy : BaseObservable, Parcelable {
 
     private val dnsRoutes = ArrayList<String>()
-    private var allowedIps: String? = null
-    private var allowedIpsState = AllowedIpsState.INVALID
-    private var endpoint: String? = null
+    var allowedIps: ObservableField<String> = ObservableField()
+        set(value) {
+            field = value
+            calculateAllowedIpsState()
+        }
+    private var allowedIpsState: ObservableField<AllowedIpsState> = ObservableField(AllowedIpsState.INVALID)
+    var endpoint: ObservableField<String> = ObservableField()
     private var interfaceDnsListener: InterfaceDnsListener? = null
     private var owner: ConfigProxy? = null
     private var peerListListener: PeerListListener? = null
-    private var persistentKeepalive: String? = null
-    private var preSharedKey: String? = null
-    private var publicKey: String? = null
-    private var totalPeers: Int = 0
+    var persistentKeepalive: ObservableField<String> = ObservableField()
+    var preSharedKey: ObservableField<String> = ObservableField()
+    var publicKey: ObservableField<String> = ObservableField()
+    var totalPeers: ObservableInt = ObservableInt(0)
+        set(value) {
+            if (field == value)
+                return
+            field = value
+            calculateAllowedIpsState()
+        }
 
     private val allowedIpsSet: Set<String>
         get() = LinkedHashSet(Attribute.split(allowedIps.toString()).toSet())
 
-    val isAbleToExcludePrivateIps: Boolean
-        @Bindable
-        get() = allowedIpsState == AllowedIpsState.CONTAINS_IPV4_PUBLIC_NETWORKS || allowedIpsState == AllowedIpsState.CONTAINS_IPV4_WILDCARD
+    val isAbleToExcludePrivateIps: ObservableBoolean
+        get() {
+            return ObservableBoolean(
+                allowedIpsState == AllowedIpsState.CONTAINS_IPV4_PUBLIC_NETWORKS ||
+                    allowedIpsState == AllowedIpsState.CONTAINS_IPV4_WILDCARD
+            )
+        }
 
     // Replace the first instance of the wildcard with the public network list, or vice versa.
     // DNS servers only need to handled specially when we're excluding private IPs.
-    var isExcludingPrivateIps: Boolean
-        @Bindable
-        get() = allowedIpsState == AllowedIpsState.CONTAINS_IPV4_PUBLIC_NETWORKS
+    var isExcludingPrivateIps: ObservableBoolean
+        get() = ObservableBoolean(allowedIpsState == AllowedIpsState.CONTAINS_IPV4_PUBLIC_NETWORKS)
         set(excludingPrivateIps) {
-            if (!isAbleToExcludePrivateIps || isExcludingPrivateIps == excludingPrivateIps)
+            val excludingPrivateIpsBool = excludingPrivateIps.get()
+            if (!isAbleToExcludePrivateIps.get() || isExcludingPrivateIps == excludingPrivateIps)
                 return
-            val oldNetworks = if (excludingPrivateIps) IPV4_WILDCARD else IPV4_PUBLIC_NETWORKS
-            val newNetworks = if (excludingPrivateIps) IPV4_PUBLIC_NETWORKS else IPV4_WILDCARD
+            val oldNetworks = if (excludingPrivateIpsBool) IPV4_WILDCARD else IPV4_PUBLIC_NETWORKS
+            val newNetworks = if (excludingPrivateIpsBool) IPV4_PUBLIC_NETWORKS else IPV4_WILDCARD
             val input = allowedIpsSet
             val outputSize = input.size - oldNetworks.size + newNetworks.size
             val output = LinkedHashSet<String>(outputSize)
@@ -66,45 +81,45 @@ class PeerProxy : BaseObservable, Parcelable {
                     output.add(network)
                 }
             }
-            if (excludingPrivateIps)
+            if (excludingPrivateIpsBool)
                 output.addAll(dnsRoutes)
             else
                 output.removeAll(dnsRoutes)
-            allowedIps = Attribute.join(output)
-            allowedIpsState = if (excludingPrivateIps)
-                AllowedIpsState.CONTAINS_IPV4_PUBLIC_NETWORKS
-            else
-                AllowedIpsState.CONTAINS_IPV4_WILDCARD
-            notifyPropertyChanged(BR.allowedIps)
-            notifyPropertyChanged(BR.excludingPrivateIps)
+            allowedIps.set(Attribute.join(output))
+            allowedIpsState.set(
+                if (excludingPrivateIpsBool)
+                    AllowedIpsState.CONTAINS_IPV4_PUBLIC_NETWORKS
+                else
+                    AllowedIpsState.CONTAINS_IPV4_WILDCARD
+            )
         }
 
     fun toggleExcludePrivateIPs() {
-        isExcludingPrivateIps = !isExcludingPrivateIps
+        isExcludingPrivateIps.set(!isExcludingPrivateIps.get())
     }
 
     private constructor(`in`: Parcel) {
-        allowedIps = `in`.readString()
-        endpoint = `in`.readString()
-        persistentKeepalive = `in`.readString()
-        preSharedKey = `in`.readString()
-        publicKey = `in`.readString()
+        allowedIps.set(`in`.readString())
+        endpoint.set(`in`.readString())
+        persistentKeepalive.set(`in`.readString())
+        preSharedKey.set(`in`.readString())
+        publicKey.set(`in`.readString())
     }
 
     constructor(other: Peer) {
-        allowedIps = Attribute.join(other.allowedIps)
-        endpoint = other.endpoint?.toString() ?: ""
-        persistentKeepalive = other.persistentKeepalive?.toString() ?: ""
-        preSharedKey = other.preSharedKey?.toBase64() ?: ""
-        publicKey = other.publicKey.toBase64()
+        allowedIps.set(Attribute.join(other.allowedIps))
+        endpoint.set(other.endpoint?.toString())
+        persistentKeepalive.set(other.persistentKeepalive?.toString())
+        preSharedKey.set(other.preSharedKey?.toBase64())
+        publicKey.set(other.publicKey.toBase64())
     }
 
     constructor() {
-        allowedIps = ""
-        endpoint = ""
-        persistentKeepalive = ""
-        preSharedKey = ""
-        publicKey = ""
+        allowedIps.set("")
+        endpoint.set("")
+        persistentKeepalive.set("")
+        preSharedKey.set("")
+        publicKey.set("")
     }
 
     fun bind(owner: ConfigProxy) {
@@ -117,13 +132,13 @@ class PeerProxy : BaseObservable, Parcelable {
         if (peerListListener == null)
             peerListListener = PeerListListener(this)
         peers.addOnListChangedCallback(peerListListener)
-        setTotalPeers(peers.size)
+        totalPeers.set(peers.size)
         this.owner = owner
     }
 
     private fun calculateAllowedIpsState() {
         val newState: AllowedIpsState
-        newState = if (totalPeers == 1) {
+        newState = if (totalPeers.get() == 1) {
             // String comparison works because we only care if allowedIps is a superset of one of
             // the above sets of (valid) *networks*. We are not checking for a superset based on
             // the individual addresses in each set.
@@ -139,9 +154,7 @@ class PeerProxy : BaseObservable, Parcelable {
             AllowedIpsState.INVALID
         }
         if (newState != allowedIpsState) {
-            allowedIpsState = newState
-            notifyPropertyChanged(BR.ableToExcludePrivateIps)
-            notifyPropertyChanged(BR.excludingPrivateIps)
+            allowedIpsState.set(newState)
         }
     }
 
@@ -149,51 +162,15 @@ class PeerProxy : BaseObservable, Parcelable {
         return 0
     }
 
-    @Bindable
-    fun getAllowedIps(): String? {
-        return allowedIps
-    }
-
-    @Bindable
-    fun getEndpoint(): String? {
-        return endpoint
-    }
-
-    @Bindable
-    fun getPersistentKeepalive(): String? {
-        return persistentKeepalive
-    }
-
-    @Bindable
-    fun getPreSharedKey(): String? {
-        return preSharedKey
-    }
-
-    @Bindable
-    fun getPublicKey(): String? {
-        return publicKey
-    }
-
     @Throws(BadConfigException::class)
     fun resolve(): Peer {
         val builder = Peer.Builder()
-        allowedIps?.let { if (it.isNotEmpty()) builder.parseAllowedIPs(it) }
-        endpoint?.let { if (it.isNotEmpty()) builder.parseEndpoint(it) }
-        persistentKeepalive?.let { if (it.isNotEmpty()) builder.parsePersistentKeepalive(it) }
-        preSharedKey?.let { if (it.isNotEmpty()) builder.parsePreSharedKey(it) }
-        publicKey?.let { if (it.isNotEmpty()) builder.parsePublicKey(it) }
+        allowedIps.get()?.let { if (it.isNotEmpty()) builder.parseAllowedIPs(it) }
+        endpoint.get()?.let { if (it.isNotEmpty()) builder.parseEndpoint(it) }
+        persistentKeepalive.get()?.let { if (it.isNotEmpty()) builder.parsePersistentKeepalive(it) }
+        preSharedKey.get()?.let { if (it.isNotEmpty()) builder.parsePreSharedKey(it) }
+        publicKey.get()?.let { if (it.isNotEmpty()) builder.parsePublicKey(it) }
         return builder.build()
-    }
-
-    fun setAllowedIps(allowedIps: String) {
-        this.allowedIps = allowedIps
-        notifyPropertyChanged(BR.allowedIps)
-        calculateAllowedIpsState()
-    }
-
-    fun setEndpoint(endpoint: String) {
-        this.endpoint = endpoint
-        notifyPropertyChanged(BR.endpoint)
     }
 
     private fun setInterfaceDns(dnsServers: CharSequence?) {
@@ -211,33 +188,10 @@ class PeerProxy : BaseObservable, Parcelable {
             // Since output is a Set, this does the Right Thing™ (it does not duplicate networks).
             output.addAll(newDnsRoutes)
             // None of the public networks are /32s, so this cannot change the AllowedIPs state.
-            allowedIps = Attribute.join(output)
-            notifyPropertyChanged(BR.allowedIps)
+            allowedIps.set(Attribute.join(output))
         }
         dnsRoutes.clear()
         dnsRoutes.addAll(newDnsRoutes)
-    }
-
-    fun setPersistentKeepalive(persistentKeepalive: String) {
-        this.persistentKeepalive = persistentKeepalive
-        notifyPropertyChanged(BR.persistentKeepalive)
-    }
-
-    fun setPreSharedKey(preSharedKey: String) {
-        this.preSharedKey = preSharedKey
-        notifyPropertyChanged(BR.preSharedKey)
-    }
-
-    fun setPublicKey(publicKey: String) {
-        this.publicKey = publicKey
-        notifyPropertyChanged(BR.publicKey)
-    }
-
-    private fun setTotalPeers(totalPeers: Int) {
-        if (this.totalPeers == totalPeers)
-            return
-        this.totalPeers = totalPeers
-        calculateAllowedIpsState()
     }
 
     fun unbind() {
@@ -254,17 +208,17 @@ class PeerProxy : BaseObservable, Parcelable {
             peerListListener?.let { peerListListener -> peers.removeOnListChangedCallback(peerListListener) }
             peers.remove(this)
             setInterfaceDns("")
-            setTotalPeers(0)
+            totalPeers.set(0)
         }
         owner = null
     }
 
     override fun writeToParcel(dest: Parcel, flags: Int) {
-        dest.writeString(allowedIps)
-        dest.writeString(endpoint)
-        dest.writeString(persistentKeepalive)
-        dest.writeString(preSharedKey)
-        dest.writeString(publicKey)
+        dest.writeString(allowedIps.get())
+        dest.writeString(endpoint.get())
+        dest.writeString(persistentKeepalive.get())
+        dest.writeString(preSharedKey.get())
+        dest.writeString(publicKey.get())
     }
 
     private enum class AllowedIpsState {
@@ -301,7 +255,7 @@ class PeerProxy : BaseObservable, Parcelable {
                 sender.removeOnListChangedCallback(this)
                 return
             }
-            peerProxy.setTotalPeers(sender.size)
+            peerProxy.totalPeers.set(sender.size)
         }
 
         override fun onItemRangeChanged(
