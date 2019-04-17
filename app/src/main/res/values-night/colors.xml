@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <color name="primary_color">#FF000000</color>
+    <color name="primary_color">@*android:color/background_floating_material_dark</color>
+    <color name="accent">@*android:color/holo_red_light</color>
+    <color name="accent_darker">@color/accent</color>
     <color name="color_background">@color/primary_color</color>
     <color name="system_bars_color">@color/primary_color</color>
     <color name="list_multiselect_background">#1AEEEEEE</color>
